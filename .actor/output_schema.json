@@ -1,0 +1,14 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "Prediction Markets Data output",
+  "description": "Normalized Kalshi and Polymarket market records (prices, orderbooks, trades, settlement) in the default dataset.",
+  "type": "object",
+  "properties": {
+    "markets": {
+      "type": "string",
+      "title": "Markets",
+      "description": "One record per market, unified across venues (see the 'source' field). In monitor mode only new or changed markets are emitted.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    }
+  }
+}

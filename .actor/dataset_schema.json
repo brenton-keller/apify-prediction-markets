@@ -1,0 +1,170 @@
+{
+  "actorSpecification": 1,
+  "fields": {},
+  "views": {
+    "overview": {
+      "title": "Markets",
+      "transformation": {
+        "fields": [
+          "source",
+          "title",
+          "outcome_label",
+          "implied_probability",
+          "yes_bid",
+          "yes_ask",
+          "volume_24h",
+          "liquidity",
+          "open_interest",
+          "close_time",
+          "status",
+          "result",
+          "price_move_pts",
+          "url"
+        ]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "source": {
+            "label": "Source",
+            "format": "text"
+          },
+          "title": {
+            "label": "Market",
+            "format": "text"
+          },
+          "outcome_label": {
+            "label": "Outcome",
+            "format": "text"
+          },
+          "implied_probability": {
+            "label": "P(yes)",
+            "format": "number"
+          },
+          "yes_bid": {
+            "label": "Bid",
+            "format": "number"
+          },
+          "yes_ask": {
+            "label": "Ask",
+            "format": "number"
+          },
+          "volume_24h": {
+            "label": "Vol 24h",
+            "format": "number"
+          },
+          "liquidity": {
+            "label": "Liquidity",
+            "format": "number"
+          },
+          "open_interest": {
+            "label": "OI",
+            "format": "number"
+          },
+          "close_time": {
+            "label": "Closes",
+            "format": "date"
+          },
+          "status": {
+            "label": "Status",
+            "format": "text"
+          },
+          "result": {
+            "label": "Result",
+            "format": "text"
+          },
+          "price_move_pts": {
+            "label": "Move (pts)",
+            "format": "number"
+          },
+          "url": {
+            "label": "URL",
+            "format": "link"
+          }
+        }
+      }
+    },
+    "spreads": {
+      "title": "Cross-venue spreads",
+      "transformation": {
+        "fields": [
+          "event_title",
+          "outcome_label",
+          "kalshi_yes_price",
+          "polymarket_yes_price",
+          "spread_pts",
+          "arb_edge_pts",
+          "net_edge_pts",
+          "arb_direction",
+          "kalshi_volume_24h",
+          "polymarket_volume_24h",
+          "match_score",
+          "spread_move_pts",
+          "kalshi_url",
+          "polymarket_url"
+        ]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "event_title": {
+            "label": "Event",
+            "format": "text"
+          },
+          "outcome_label": {
+            "label": "Outcome",
+            "format": "text"
+          },
+          "kalshi_yes_price": {
+            "label": "Kalshi P(yes)",
+            "format": "number"
+          },
+          "polymarket_yes_price": {
+            "label": "Polymarket P(yes)",
+            "format": "number"
+          },
+          "spread_pts": {
+            "label": "Spread (pts)",
+            "format": "number"
+          },
+          "arb_edge_pts": {
+            "label": "Edge (pts)",
+            "format": "number"
+          },
+          "net_edge_pts": {
+            "label": "Net edge (pts)",
+            "format": "number"
+          },
+          "arb_direction": {
+            "label": "Direction",
+            "format": "text"
+          },
+          "kalshi_volume_24h": {
+            "label": "Kalshi vol 24h",
+            "format": "number"
+          },
+          "polymarket_volume_24h": {
+            "label": "Poly vol 24h",
+            "format": "number"
+          },
+          "match_score": {
+            "label": "Match",
+            "format": "number"
+          },
+          "spread_move_pts": {
+            "label": "Move (pts)",
+            "format": "number"
+          },
+          "kalshi_url": {
+            "label": "Kalshi",
+            "format": "link"
+          },
+          "polymarket_url": {
+            "label": "Polymarket",
+            "format": "link"
+          }
+        }
+      }
+    }
+  }
+}

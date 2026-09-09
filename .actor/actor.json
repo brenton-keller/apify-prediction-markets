@@ -1,0 +1,21 @@
+{
+	"$schema": "https://apify.com/schemas/v1/actor.ide.json",
+	"actorSpecification": 1,
+	"name": "prediction-markets-data",
+	"title": "Kalshi + Polymarket Prediction Markets Scraper & Monitor",
+	"description": "Returns live prices, orderbooks, trades, settlement history and cross-venue spreads (Kalshi vs Polymarket pairs with executable edge) for Kalshi and Polymarket markets as one unified dataset: weather, politics, sports, crypto. Official public APIs, no login.",
+	"version": "0.1",
+	"buildTag": "latest",
+	"meta": {
+		"templateId": "python-empty",
+		"generatedBy": "brenton-keller"
+	},
+	"input": "./input_schema.json",
+	"output": "./output_schema.json",
+	"storages": {
+		"dataset": "./dataset_schema.json"
+	},
+	"minMemoryMbytes": 512,
+	"maxMemoryMbytes": 2048,
+	"dockerfile": "../Dockerfile"
+}

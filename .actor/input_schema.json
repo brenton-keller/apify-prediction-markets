@@ -1,0 +1,292 @@
+{
+  "title": "Prediction Markets Data: Kalshi + Polymarket",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "mode": {
+      "title": "Mode",
+      "type": "string",
+      "editor": "select",
+      "enum": [
+        "markets",
+        "spread"
+      ],
+      "enumTitles": [
+        "Markets: one row per market",
+        "Cross-venue spread: one row per Kalshi/Polymarket pair"
+      ],
+      "default": "markets",
+      "description": "'spread' pairs the same question on both exchanges (weather brackets, Fed, elections, sports...) and reports the price gap and the executable edge. Both sources are always fetched in spread mode."
+    },
+    "sources": {
+      "title": "Sources",
+      "type": "array",
+      "description": "Which exchanges to pull from.",
+      "editor": "select",
+      "items": {
+        "type": "string",
+        "enum": [
+          "kalshi",
+          "polymarket"
+        ],
+        "enumTitles": [
+          "Kalshi",
+          "Polymarket"
+        ]
+      },
+      "default": [
+        "kalshi",
+        "polymarket"
+      ],
+      "prefill": [
+        "kalshi",
+        "polymarket"
+      ]
+    },
+    "status": {
+      "title": "Market status",
+      "type": "string",
+      "description": "Open markets (tradeable now), settled/closed markets (with results), or both.",
+      "editor": "select",
+      "enum": [
+        "open",
+        "settled",
+        "all"
+      ],
+      "enumTitles": [
+        "Open",
+        "Settled / closed",
+        "All"
+      ],
+      "default": "open"
+    },
+    "searchQueries": {
+      "title": "Search keywords",
+      "type": "array",
+      "description": "Case-insensitive keywords matched against market title, event title and series title. Leave empty to return the top markets by 24h volume.",
+      "editor": "stringList",
+      "prefill": [
+        "Fed",
+        "interest rate"
+      ]
+    },
+    "weatherPreset": {
+      "title": "Weather markets preset",
+      "type": "boolean",
+      "description": "Kalshi 'Climate and Weather' series (daily high/low temperature brackets, rain, hurricanes) plus Polymarket weather tag. Combine with 'Cities' to narrow.",
+      "default": false
+    },
+    "cities": {
+      "title": "Cities (weather preset)",
+      "type": "array",
+      "description": "Filter weather series by city name in the series title, e.g. NYC, Chicago, Miami, Austin, Denver, Los Angeles.",
+      "editor": "stringList"
+    },
+    "kalshiCategories": {
+      "title": "Kalshi categories",
+      "type": "array",
+      "description": "Restrict Kalshi to these categories.",
+      "editor": "select",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Politics",
+          "Elections",
+          "Economics",
+          "Financials",
+          "Companies",
+          "Crypto",
+          "Commodities",
+          "Climate and Weather",
+          "Science and Technology",
+          "Health",
+          "World",
+          "Sports",
+          "Entertainment",
+          "Mentions",
+          "Social",
+          "Transportation",
+          "Exotics"
+        ]
+      }
+    },
+    "kalshiSeriesTickers": {
+      "title": "Kalshi series tickers",
+      "type": "array",
+      "description": "e.g. KXHIGHNY (NYC daily high temp), KXFEDDECISION. Fastest way to target a market family.",
+      "editor": "stringList"
+    },
+    "kalshiEventTickers": {
+      "title": "Kalshi event tickers",
+      "type": "array",
+      "description": "e.g. KXHIGHNY-26SEP02. Returns all bracket markets in the event.",
+      "editor": "stringList"
+    },
+    "kalshiMarketTickers": {
+      "title": "Kalshi market tickers",
+      "type": "array",
+      "description": "Exact market tickers, e.g. KXHIGHNY-26SEP02-T82.",
+      "editor": "stringList"
+    },
+    "polymarketTags": {
+      "title": "Polymarket tags",
+      "type": "array",
+      "description": "Tag slugs or numeric tag IDs, e.g. politics, crypto, fomc, weather, nba.",
+      "editor": "stringList"
+    },
+    "polymarketEventSlugs": {
+      "title": "Polymarket event slugs",
+      "type": "array",
+      "description": "From the URL polymarket.com/event/<slug>. Returns every market in the event.",
+      "editor": "stringList"
+    },
+    "polymarketMarketSlugs": {
+      "title": "Polymarket market slugs",
+      "type": "array",
+      "description": "Exact market slugs.",
+      "editor": "stringList"
+    },
+    "minVolume24h": {
+      "title": "Min 24h volume",
+      "type": "integer",
+      "description": "Drop markets below this 24h volume (contracts for Kalshi, USD for Polymarket).",
+      "default": 0,
+      "minimum": 0
+    },
+    "minLiquidity": {
+      "title": "Min liquidity (USD)",
+      "type": "integer",
+      "description": "Drop markets below this resting liquidity.",
+      "default": 0,
+      "minimum": 0
+    },
+    "minOpenInterest": {
+      "title": "Min open interest (Kalshi)",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "description": "Drop Kalshi markets with open interest below this many contracts."
+    },
+    "settledLookbackDays": {
+      "title": "Settled lookback (days)",
+      "type": "integer",
+      "description": "For status 'settled' or 'all': how far back to fetch resolved markets.",
+      "default": 7,
+      "minimum": 1,
+      "maximum": 365
+    },
+    "sortBy": {
+      "title": "Sort by",
+      "type": "string",
+      "editor": "select",
+      "enum": [
+        "volume_24h",
+        "liquidity",
+        "open_interest",
+        "close_time"
+      ],
+      "enumTitles": [
+        "24h volume (desc)",
+        "Liquidity (desc)",
+        "Open interest (desc)",
+        "Close time (soonest first)"
+      ],
+      "default": "volume_24h",
+      "description": "Order of rows before the \"Max markets\" cap is applied."
+    },
+    "maxItems": {
+      "title": "Max markets",
+      "type": "integer",
+      "description": "Cap on dataset rows. Applied after filtering and sorting.",
+      "default": 500,
+      "minimum": 1,
+      "maximum": 50000
+    },
+    "includeOrderbook": {
+      "title": "Include orderbook",
+      "type": "boolean",
+      "description": "Attach top-of-book depth (bids/asks) per market. One extra API call per market. Billed as enriched record.",
+      "default": false
+    },
+    "includeRecentTrades": {
+      "title": "Include recent trades",
+      "type": "boolean",
+      "description": "Attach the most recent fills per market. One extra API call per market. Billed as enriched record.",
+      "default": false
+    },
+    "tradesLimit": {
+      "title": "Trades per market",
+      "type": "integer",
+      "default": 25,
+      "minimum": 1,
+      "maximum": 500,
+      "description": "How many recent fills to attach per market when \"Include recent trades\" is on."
+    },
+    "orderbookDepth": {
+      "title": "Orderbook depth",
+      "type": "integer",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 100,
+      "description": "Price levels per side to attach when \"Include orderbook\" is on."
+    },
+    "changesOnly": {
+      "title": "Changes only (monitor mode)",
+      "type": "boolean",
+      "description": "Remember values between runs and output only rows that are new or moved at least 'Min price move' (YES price in markets mode, spread in spread mode). Schedule this actor to get a clean feed of what changed.",
+      "default": false
+    },
+    "minPriceMovePts": {
+      "title": "Min price move (points)",
+      "type": "integer",
+      "description": "In monitor mode: minimum move in probability points (0-100) of the YES price (markets mode) or of the spread (spread mode) to be reported.",
+      "default": 2,
+      "minimum": 0,
+      "maximum": 100
+    },
+    "monitorStoreName": {
+      "title": "Monitor store name",
+      "type": "string",
+      "description": "Named key-value store that holds the last-seen prices. Use different names for different watchlists.",
+      "default": "prediction-markets-monitor",
+      "editor": "textfield"
+    },
+    "includeRaw": {
+      "title": "Include raw API objects",
+      "type": "boolean",
+      "description": "Attach the untouched upstream market object under 'raw'.",
+      "default": false
+    },
+    "pairs": {
+      "title": "Explicit pairs (spread mode)",
+      "type": "array",
+      "editor": "stringList",
+      "description": "KALSHI_TICKER=polymarket-market-slug (or =0x condition id). Always paired, no matching needed. Example: KXHIGHNY-26SEP08-T80=will-the-highest-temperature-in-new-york-city-be-between-80-81f-on-september-8"
+    },
+    "minSpreadPts": {
+      "title": "Min spread (points, spread mode)",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Only report pairs whose absolute Kalshi-minus-Polymarket gap is at least this many probability points."
+    },
+    "minMatchScore": {
+      "title": "Min match score (spread mode)",
+      "type": "integer",
+      "default": 60,
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Title similarity (0-100) required to auto-pair an event across venues. Lower to see more, less certain pairs; every row carries its match_score."
+    },
+    "spreadPoolSize": {
+      "title": "Polymarket candidate pool (spread mode)",
+      "type": "integer",
+      "default": 2000,
+      "minimum": 100,
+      "maximum": 10000,
+      "description": "How many top-volume Polymarket markets to consider for pairing when no Polymarket filter is set."
+    }
+  },
+  "required": []
+}

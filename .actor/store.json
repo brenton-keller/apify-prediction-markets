@@ -1,0 +1,14 @@
+{
+  "categories": [
+    "AGENTS",
+    "AUTOMATION",
+    "DEVELOPER_TOOLS"
+  ],
+  "seoTitle": "Kalshi + Polymarket Prediction Markets Scraper & Monitor",
+  "seoDescription": "Live prices, orderbooks, trades and settled results from Kalshi and Polymarket in one dataset. Official APIs, no login. Monitor mode. Pay per result.",
+  "isPublic": true,
+  "defaultRunOptions": {
+    "memoryMbytes": 512,
+    "timeoutSecs": 1800
+  }
+}
