@@ -34,6 +34,28 @@ _ORD = re.compile(r'\b(\d+)(st|nd|rd|th)\b')
 _DATE_MD = re.compile(r'\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})\b')
 _DATE_DM = re.compile(r'\b(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\b')
 
+# A pair can have identical titles and brackets while settling against different
+# facts.  Keep the gate intentionally conservative: a six-hour difference is
+# already too large for a row advertised as an executable cross-venue edge.
+MAX_CLOSE_TIME_DELTA_HOURS = 6.0
+
+# Canonicalize only authorities that the rules name unambiguously.  Do not turn
+# generic phrases such as "official results" into a match: two venues can both
+# say "official" while relying on different agencies or data vendors.
+_AUTHORITY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ('the_weather_company', re.compile(r'\bthe weather company\b|\bweather\.com\b', re.I)),
+    ('noaa', re.compile(r'\bnoaa\b|\bnational oceanic and atmospheric administration\b|\bnational weather service\b|\bweather\.gov\b', re.I)),
+    ('bls', re.compile(r'\bbureau of labor statistics\b|\bbls\.gov\b|\bBLS\b', re.I)),
+    ('bea', re.compile(r'\bbureau of economic analysis\b|\bbea\.gov\b|\bBEA\b', re.I)),
+    ('federal_reserve', re.compile(r'\bfederal reserve\b|\bfederalreserve\.gov\b', re.I)),
+    ('cme', re.compile(r'\bchicago mercantile exchange\b|\bcme group\b|\bcmegroup\.com\b|\bCME\b', re.I)),
+    ('fec', re.compile(r'\bfederal election commission\b|\bfec\.gov\b|\bFEC\b', re.I)),
+    ('associated_press', re.compile(r'\bassociated press\b|\bAP News\b', re.I)),
+    ('reuters', re.compile(r'\breuters\b', re.I)),
+    ('cnn', re.compile(r'\bcnn\b', re.I)),
+    ('fox_news', re.compile(r'\bfox news\b', re.I)),
+)
+
 
 def clean(text: str | None) -> str:
     t = (text or '').lower().replace('’', "'").replace('–', '-').replace('—', '-')
@@ -95,6 +117,71 @@ def semantic_compatible(a: str | None, b: str | None) -> bool:
     if ad and bd and not (ad & bd):
         return False
     return True
+
+
+def settlement_authorities(rec: dict) -> tuple[str, ...]:
+    """Return canonical authorities explicitly named in a contract's rules."""
+    text = str(rec.get('rules') or '')
+    return tuple(name for name, pattern in _AUTHORITY_PATTERNS if pattern.search(text))
+
+
+def _utc_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def settlement_compatibility(k: dict, p: dict) -> dict:
+    """Machine-check the minimum evidence needed before publishing an edge.
+
+    ``compatible`` means both contracts name at least one common settlement
+    authority and their stated close times are within six hours. ``incompatible``
+    means an explicit authority or close-time conflict. Missing evidence is
+    ``unverified``. Only ``compatible`` rows may expose arb/net edge fields.
+    """
+    ka, pa = settlement_authorities(k), settlement_authorities(p)
+    reasons: list[str] = []
+    incompatible = False
+
+    authority_verified = bool(ka and pa and set(ka) & set(pa))
+    if ka and pa and not authority_verified:
+        incompatible = True
+        reasons.append(f"settlement_authority_mismatch:{','.join(ka)}!={','.join(pa)}")
+    elif not authority_verified:
+        reasons.append('settlement_authority_unverified')
+
+    kt, pt = _utc_time(k.get('close_time')), _utc_time(p.get('close_time'))
+    delta = round(abs((kt - pt).total_seconds()) / 3600, 3) if kt and pt else None
+    close_verified = delta is not None and delta <= MAX_CLOSE_TIME_DELTA_HOURS
+    if delta is not None and not close_verified:
+        incompatible = True
+        reasons.append(f'close_time_delta_exceeds_{MAX_CLOSE_TIME_DELTA_HOURS:g}h')
+    elif delta is None:
+        reasons.append('close_time_unverified')
+
+    if incompatible:
+        status = 'incompatible'
+        compatible: bool | None = False
+    elif authority_verified and close_verified:
+        status = 'compatible'
+        compatible = True
+    else:
+        status = 'unverified'
+        compatible = None
+    return {
+        'settlement_compatible': compatible,
+        'settlement_status': status,
+        'settlement_reasons': reasons,
+        'kalshi_settlement_authorities': list(ka),
+        'polymarket_settlement_authorities': list(pa),
+        'close_time_delta_hours': delta,
+    }
 
 
 def jaccard(a: frozenset, b: frozenset) -> float:
@@ -252,7 +339,11 @@ def auto_pairs(k_rows: list[dict], p_rows: list[dict], min_score: float) -> list
     for kid, pid, score in match_events(k_events, p_events, min_score):
         for kr, pr, ms in match_markets(k_events[kid]['markets'], p_events[pid]['markets']):
             final = round(min(score, ms), 3)
-            if final >= min_score:  # market-level matching must not weaken the advertised threshold
+            # Explicit conflicts are not candidates. Unknown authorities may
+            # still be useful as price-divergence rows, but pair_row suppresses
+            # every edge field until compatibility is positively verified.
+            terms = settlement_compatibility(kr, pr)
+            if final >= min_score and terms['settlement_status'] != 'incompatible':
                 out.append((kr, pr, final))
     return out
 
@@ -264,6 +355,7 @@ def _pts(x: float | None) -> float | None:
 def pair_row(k: dict, p: dict, score: float, method: str) -> dict:
     kp, pp = k.get('yes_price'), p.get('yes_price')
     spread = None if kp is None or pp is None else round((kp - pp) * 100, 2)
+    terms = settlement_compatibility(k, p)
     # Executable edge before fees: buy YES where it is cheaper (at the ask), buy NO on the other venue
     # (which costs 1 - that venue's YES bid). Both legs pay $1 together on settlement, so edge = bid - ask.
     edges: list[tuple[float, str, float]] = []
@@ -271,7 +363,7 @@ def pair_row(k: dict, p: dict, score: float, method: str) -> dict:
         edges.append((round((p['yes_bid'] - k['yes_ask']) * 100, 2), 'yes_kalshi_no_polymarket', k['yes_ask']))
     if p.get('yes_ask') is not None and k.get('yes_bid') is not None and p['yes_ask'] > 0:
         edges.append((round((k['yes_bid'] - p['yes_ask']) * 100, 2), 'yes_polymarket_no_kalshi', 1 - k['yes_bid']))
-    edge, direction, k_leg = max(edges) if edges else (None, None, None)
+    edge, direction, k_leg = max(edges) if edges and terms['settlement_compatible'] is True else (None, None, None)
     # Kalshi taker fee: 7% x P x (1-P) per contract, rounded up to the cent. Polymarket has no taker fee on most markets.
     fee = None if k_leg is None else round(math.ceil(7 * k_leg * (1 - k_leg) * 100) / 100, 2)
     net = None if edge is None else round(edge - fee, 2)
@@ -284,6 +376,7 @@ def pair_row(k: dict, p: dict, score: float, method: str) -> dict:
         'event_title': k.get('event_title') or p.get('event_title'),
         'match_score': score,
         'match_method': method,
+        **terms,
         'spread_pts': spread,
         'abs_spread_pts': None if spread is None else abs(spread),
         'arb_edge_pts': edge,

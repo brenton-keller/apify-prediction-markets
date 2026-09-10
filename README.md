@@ -19,11 +19,12 @@ The reliability wedge: official APIs, no scraping, no proxies, no login. Every s
 Set `"mode": "spread"` and the actor pairs the same question on both exchanges and prices the gap. One row per pair:
 
 - `kalshi_yes_price`, `polymarket_yes_price`, `spread_pts` (Kalshi minus Polymarket, in probability points)
-- `arb_edge_pts`: the executable edge before fees, from the books: buy YES at the cheaper venue's ask and buy NO at the other venue (1 minus its YES bid); both legs together pay $1 at settlement, so edge = bid minus ask. `arb_direction` says which way (`yes_kalshi_no_polymarket` or `yes_polymarket_no_kalshi`); null when there is no positive edge
+- `settlement_status`, `settlement_reasons`, both venues' detected settlement authorities, and `close_time_delta_hours`: the compatibility receipt behind every candidate
+- `arb_edge_pts`: the executable edge before fees, from the books: buy YES at the cheaper venue's ask and buy NO at the other venue (1 minus its YES bid). It is populated only when both rule texts name a common settlement authority and close times are within six hours. `arb_direction` says which way (`yes_kalshi_no_polymarket` or `yes_polymarket_no_kalshi`); null when compatibility is unverified, incompatible, or there is no positive edge
 - `kalshi_fee_est_pts` (Kalshi taker fee, 7% x P x (1-P) rounded up to the cent) and `net_edge_pts` = edge minus that fee
 - `match_score` (0-1) and `match_method` (`auto` or `explicit`), both venues' links, volumes, close times, settlement rules
 
-Pairing is deliberately conservative. Events are paired when their titles agree after normalisation (NYC = New York City, Sep = September, years dropped) and their dates do not conflict; markets inside a paired event are matched by bracket ("80-81", "79 or below", "80 or higher"), by 1:1 events, or by outcome label. Anything uncertain is left out. For questions the matcher cannot pair, pass them yourself:
+Pairing is deliberately conservative. Events are paired when their titles agree after normalisation (NYC = New York City, Sep = September) and their dates, years, and directions do not conflict; markets inside a paired event are matched by bracket ("80-81", "79 or below", "80 or higher"), by 1:1 events, or by outcome label. Auto-pairs with an explicit settlement-authority conflict or more than six hours between close times are excluded. Candidates whose authority cannot be verified may remain useful as divergence research, but all edge, fee, and direction fields are null. Explicit pairs bypass title matching, never the settlement safety gate. For questions the matcher cannot pair, pass them yourself:
 
 ```json
 {
@@ -46,11 +47,11 @@ Pairing is deliberately conservative. Events are paired when their titles agree 
 
 Add an Apify integration (Slack, email, webhook) on the actor's Integrations tab and you have an alert feed without any extra code.
 
-Read the rules before trading a gap: the two venues do not always settle on the same source. Miami daily highs, for example, can close at 99% on different brackets because Kalshi and Polymarket read different weather stations. `kalshi_settlement_station`, `kalshi_rules` and `polymarket_rules` are on every row for that check. Rows are sorted by absolute spread, then net edge; `minSpreadPts` drops small gaps; `minMatchScore` (high-precision default 80) loosens or tightens auto pairing. Changes-only spread monitoring rejects non-positive edges, below-threshold matches and contracts whose stated close time has passed, and tracks movement in executable net edge rather than midpoint spread. Spread rows are billed as spread records (see Pricing).
+Read the full rules before trading a gap. The machine gate catches explicitly different named authorities (for example The Weather Company vs NOAA) and close times more than six hours apart; it cannot prove that every remaining clause, station, rounding rule, or exceptional-resolution procedure is identical. `kalshi_settlement_station`, both rule excerpts, `settlement_status`, `settlement_reasons`, detected authorities, and `close_time_delta_hours` are included for audit. Rows are sorted by absolute spread, then verified net edge; `minSpreadPts` drops small gaps; `minMatchScore` (high-precision default 80) loosens or tightens auto pairing. Changes-only spread monitoring accepts only verified compatible positive edges with two live legs and tracks net-edge movement rather than midpoint spread. Spread rows are billed as spread records (see Pricing).
 
 ## Who it's for
 
-- Traders and quant researchers comparing prices across venues: spread mode gives the matched pairs, the gap and the executable edge, ready to schedule.
+- Traders and quant researchers comparing prices across venues: spread mode gives conservative matched candidates, compatibility evidence, and verified edge fields, ready to schedule for research and alerting.
 - Weather-market traders who need every temperature bracket for a city with orderbook depth, in one call, reliably.
 - Analysts and journalists tracking probability moves on elections, Fed decisions, earnings, sports and crypto.
 - AI agents and alerting workflows that want a scheduled "what changed" feed instead of re-reading the whole board.
@@ -138,7 +139,7 @@ One row per market. Prices are fractions of a dollar (0 to 1); `implied_probabil
 | `orderbook` | With `includeOrderbook`: `{ "bids": [{"price", "size"}, ...], "asks": [{"price", "size"}, ...] }` on the YES side, best price first |
 | `recent_trades` | With `includeRecentTrades`: list of `{ "time", "yes_price", "size", "taker_side" }`, newest first |
 | `is_new`, `previous_yes_price`, `previous_seen_at`, `price_move_pts` | Monitor mode only (spread mode: `previous_net_edge_pts`, `net_edge_move_pts`) |
-| `spread_pts`, `arb_edge_pts`, `arb_direction`, `kalshi_fee_est_pts`, `net_edge_pts`, `match_score`, `match_method`, `kalshi_*`, `polymarket_*` | Spread mode only; see the spread section |
+| `spread_pts`, `settlement_status`, `settlement_reasons`, `close_time_delta_hours`, `arb_edge_pts`, `arb_direction`, `kalshi_fee_est_pts`, `net_edge_pts`, `match_score`, `match_method`, `kalshi_*`, `polymarket_*` | Spread mode only; edge fields require verified settlement compatibility; see the spread section |
 | `enrichment_error` | Set if an orderbook/trades call failed; the base row is still returned |
 | `raw` | With `includeRaw`: the untouched upstream object |
 | `fetched_at` | When the row was fetched (UTC) |

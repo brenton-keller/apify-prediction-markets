@@ -16,7 +16,7 @@
         "Cross-venue spread: one row per Kalshi/Polymarket pair"
       ],
       "default": "markets",
-      "description": "'spread' pairs the same question on both exchanges (weather brackets, Fed, elections, sports...) and reports the price gap and the executable edge. Both sources are always fetched in spread mode."
+      "description": "'spread' pairs the same question on both exchanges (weather brackets, Fed, elections, sports...) and reports price-gap candidates. Executable edge fields are populated only when a common settlement authority is detected and close times are within 6 hours. Both sources are always fetched in spread mode."
     },
     "sources": {
       "title": "Sources",
@@ -233,7 +233,7 @@
     "changesOnly": {
       "title": "Changes only (monitor mode)",
       "type": "boolean",
-      "description": "Remember values between runs. Markets mode reports new/moved YES prices. Spread mode reports only positive executable edges with two live legs, when the net edge is new or moves by the threshold.",
+      "description": "Remember values between runs. Markets mode reports new/moved YES prices. Spread mode reports only settlement-compatible positive executable edges with two live legs, when the net edge is new or moves by the threshold.",
       "default": false
     },
     "minPriceMovePts": {
@@ -261,7 +261,7 @@
       "title": "Explicit pairs (spread mode)",
       "type": "array",
       "editor": "stringList",
-      "description": "KALSHI_TICKER=polymarket-market-slug (or =0x condition id). Always paired, no matching needed. Example: KXHIGHNY-26SEP08-T80=will-the-highest-temperature-in-new-york-city-be-between-80-81f-on-september-8"
+      "description": "KALSHI_TICKER=polymarket-market-slug (or =0x condition id). Bypasses title matching, but not the settlement compatibility gate. Example: KXHIGHNY-26SEP08-T80=will-the-highest-temperature-in-new-york-city-be-between-80-81f-on-september-8"
     },
     "minSpreadPts": {
       "title": "Min spread (points, spread mode)",

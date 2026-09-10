@@ -93,6 +93,9 @@
           "kalshi_yes_price",
           "polymarket_yes_price",
           "spread_pts",
+          "settlement_status",
+          "close_time_delta_hours",
+          "settlement_reasons",
           "arb_edge_pts",
           "net_edge_pts",
           "arb_direction",
@@ -126,6 +129,18 @@
           "spread_pts": {
             "label": "Spread (pts)",
             "format": "number"
+          },
+          "settlement_status": {
+            "label": "Settlement check",
+            "format": "text"
+          },
+          "close_time_delta_hours": {
+            "label": "Close delta (h)",
+            "format": "number"
+          },
+          "settlement_reasons": {
+            "label": "Settlement reasons",
+            "format": "array"
           },
           "arb_edge_pts": {
             "label": "Edge (pts)",

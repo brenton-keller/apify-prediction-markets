@@ -8,19 +8,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from prediction_markets.main import _matches, _spread_monitor_eligible  # noqa: E402
 from prediction_markets.spread import (auto_pairs, bracket_signature, build_pairs, date_keys, direction_keys, match_events,
-                                       pair_row, parse_pairs, semantic_compatible, tokens, year_keys)  # noqa: E402
+                                       pair_row, parse_pairs, semantic_compatible, settlement_compatibility, tokens,
+                                       year_keys)  # noqa: E402
 
 
-def k(id_, event, label, title=None, p=0.5, bid=None, ask=None):
+def k(id_, event, label, title=None, p=0.5, bid=None, ask=None, rules='According to NOAA.', close_time='2026-09-09T05:00:00Z'):
     return {'source': 'kalshi', 'id': id_, 'event_id': event.split('|')[0], 'event_title': event.split('|')[1], 'series_title': None,
             'title': title or label, 'outcome_label': label, 'yes_price': p, 'yes_bid': bid, 'yes_ask': ask, 'status': 'open',
-            'close_time': '2026-09-09T05:00:00Z', 'url': 'https://kalshi.com/markets/x', 'event_url': 'https://kalshi.com/markets/x/y/z'}
+            'close_time': close_time, 'rules': rules, 'url': 'https://kalshi.com/markets/x', 'event_url': 'https://kalshi.com/markets/x/y/z'}
 
 
-def pm(id_, event, label, title=None, p=0.5, bid=None, ask=None, slug='slug'):
+def pm(id_, event, label, title=None, p=0.5, bid=None, ask=None, slug='slug', rules='National Weather Service (NOAA).',
+       close_time='2026-09-09T08:00:00Z'):
     return {'source': 'polymarket', 'id': id_, 'event_id': event.split('|')[0], 'event_title': event.split('|')[1],
             'title': title or label, 'outcome_label': label, 'yes_price': p, 'yes_bid': bid, 'yes_ask': ask, 'status': 'open',
-            'close_time': '2026-09-08T12:00:00Z', 'url': f'https://polymarket.com/event/e/{slug}'}
+            'close_time': close_time, 'rules': rules, 'url': f'https://polymarket.com/event/e/{slug}'}
 
 
 class Signatures(unittest.TestCase):
@@ -93,6 +95,20 @@ class Matching(unittest.TestCase):
         ps = [pm('P1', 'E2|Where will it rain on Sep 9, 2026?', 'New York')]
         self.assertEqual(auto_pairs(ks, ps, 0.8), [])
 
+    def test_authority_mismatch_blocks_automatic_pair(self):
+        event_k = 'E1|Highest temperature in Miami on Sep 10, 2026?'
+        event_p = 'E2|Highest temperature in Miami on September 10?'
+        ks = [k('K1', event_k, '88-89', rules='According to The Weather Company.', close_time='2026-09-10T10:00:00Z')]
+        ps = [pm('P1', event_p, '88-89', rules='Recorded by NOAA.', close_time='2026-09-10T12:00:00Z')]
+        self.assertEqual(auto_pairs(ks, ps, 0.8), [])
+
+    def test_close_time_mismatch_blocks_automatic_pair(self):
+        event_k = 'E1|Highest temperature in Miami on Sep 10, 2026?'
+        event_p = 'E2|Highest temperature in Miami on September 10?'
+        ks = [k('K1', event_k, '88-89', close_time='2026-09-11T05:00:00Z')]
+        ps = [pm('P1', event_p, '88-89', close_time='2026-09-10T12:00:00Z')]
+        self.assertEqual(auto_pairs(ks, ps, 0.8), [])
+
     def test_explicit_pairs_win_and_missing_reported(self):
         ks = [k('KX-A', 'E1|Anything', 'x')]
         ps = [pm('0xabc', 'E2|Other', 'y', slug='my-slug')]
@@ -103,6 +119,23 @@ class Matching(unittest.TestCase):
 
 
 class Economics(unittest.TestCase):
+    def test_settlement_compatibility(self):
+        compatible = settlement_compatibility(k('K', 'E|t', 'x'), pm('P', 'E|t', 'x'))
+        self.assertIs(compatible['settlement_compatible'], True)
+        self.assertEqual(compatible['settlement_status'], 'compatible')
+        self.assertEqual(compatible['close_time_delta_hours'], 3.0)
+
+        authority_bad = settlement_compatibility(
+            k('K', 'E|t', 'x', rules='According to The Weather Company.'),
+            pm('P', 'E|t', 'x', rules='Recorded by NOAA.'),
+        )
+        self.assertIs(authority_bad['settlement_compatible'], False)
+        self.assertTrue(any(x.startswith('settlement_authority_mismatch:') for x in authority_bad['settlement_reasons']))
+
+        unknown = settlement_compatibility(k('K', 'E|t', 'x', rules=''), pm('P', 'E|t', 'x', rules=''))
+        self.assertIsNone(unknown['settlement_compatible'])
+        self.assertEqual(unknown['settlement_status'], 'unverified')
+
     def test_edge_and_fee(self):
         # Kalshi YES ask 0.30, Polymarket YES bid 0.40: buy YES on Kalshi, NO on Polymarket, edge 10 pts before fees.
         row = pair_row(k('K', 'E|t', 'x', p=0.29, bid=0.28, ask=0.30), pm('P', 'E|t', 'x', p=0.41, bid=0.40, ask=0.42), 1.0, 'auto')
@@ -122,6 +155,18 @@ class Economics(unittest.TestCase):
         self.assertIsNone(row['spread_pts'])
         self.assertIsNone(row['arb_edge_pts'])
 
+    def test_explicit_incompatible_pair_has_no_edge(self):
+        row = pair_row(
+            k('K', 'E|t', 'x', bid=0.28, ask=0.30, rules='According to The Weather Company.'),
+            pm('P', 'E|t', 'x', bid=0.40, ask=0.42, rules='Recorded by NOAA.'),
+            1.0,
+            'explicit',
+        )
+        self.assertEqual(row['settlement_status'], 'incompatible')
+        self.assertIsNone(row['arb_edge_pts'])
+        self.assertIsNone(row['net_edge_pts'])
+        self.assertIsNone(row['arb_direction'])
+
     def test_keyword_search_does_not_match_opaque_ids(self):
         rec = {'id': '0x123fed456', 'series_id': 'KXFED', 'title': 'Will it rain?', 'event_title': 'Rain today',
                'outcome_label': 'Yes', 'series_title': 'Weather'}
@@ -132,10 +177,12 @@ class Economics(unittest.TestCase):
     def test_spread_monitor_quality_gate(self):
         now = __import__('datetime').datetime(2026, 9, 9, tzinfo=__import__('datetime').timezone.utc)
         good = {'match_score': 0.9, 'net_edge_pts': 2, 'arb_direction': 'yes_kalshi_no_polymarket',
+                'settlement_compatible': True,
                 'kalshi_close_time': '2026-09-10T00:00:00Z', 'polymarket_close_time': '2026-09-10T00:00:00Z'}
         self.assertTrue(_spread_monitor_eligible(good, 0.6, now))
         self.assertFalse(_spread_monitor_eligible({**good, 'net_edge_pts': -1}, 0.6, now))
         self.assertFalse(_spread_monitor_eligible({**good, 'match_score': 0.5}, 0.6, now))
+        self.assertFalse(_spread_monitor_eligible({**good, 'settlement_compatible': False}, 0.6, now))
         self.assertFalse(_spread_monitor_eligible({**good, 'polymarket_close_time': '2026-09-08T00:00:00Z'}, 0.6, now))
 
 

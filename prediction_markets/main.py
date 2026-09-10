@@ -57,6 +57,7 @@ def _spread_monitor_eligible(rec: dict, min_match_score: float, now: datetime | 
             return False
 
     return ((rec.get('match_score') or 0) >= min_match_score
+            and rec.get('settlement_compatible') is True
             and (rec.get('net_edge_pts') or 0) > 0
             and bool(rec.get('arb_direction'))
             and live(rec.get('kalshi_close_time'))
@@ -319,11 +320,11 @@ async def main() -> None:
                 raise failures[0]
             records.sort(key=SORT_KEYS[inp['sortBy']])
         if monitor and spread_mode:
-            # Alert only on semantically strong, executable edges while both contracts are still live.
+            # Alert only on settlement-compatible, semantically strong executable edges while both contracts are live.
             now = datetime.now(timezone.utc)
             before_quality = len(records)
             records = [r for r in records if _spread_monitor_eligible(r, inp['minMatchScore'] / 100, now)]
-            Actor.log.info('Spread monitor quality gate: %d of %d rows have positive executable edge and two live legs',
+            Actor.log.info('Spread monitor quality gate: %d of %d rows are settlement-compatible with a positive edge and two live legs',
                            len(records), before_quality)
         if monitor:
             records = [monitor.annotate(r) for r in records]
