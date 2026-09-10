@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+import re
 from typing import Any
 
 from apify import Actor
@@ -29,7 +30,8 @@ def _matches(rec: dict, queries: list[str]) -> bool:
         return True
     # IDs/tickers are opaque identifiers; matching them made hex condition IDs containing e.g. "fed" false positives.
     hay = ' '.join(str(rec.get(k) or '') for k in ('title', 'outcome_label', 'event_title', 'series_title')).lower()
-    return any(q.lower() in hay for q in queries)
+    # Match complete words/phrases so `Fed` does not accidentally match a person named `Feduccia`.
+    return any(re.search(rf'(?<![a-z0-9]){re.escape(q.lower())}(?![a-z0-9])', hay) for q in queries)
 
 
 def _passes(rec: dict, inp: dict) -> bool:

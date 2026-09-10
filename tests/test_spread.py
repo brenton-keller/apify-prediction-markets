@@ -126,6 +126,8 @@ class Economics(unittest.TestCase):
         rec = {'id': '0x123fed456', 'series_id': 'KXFED', 'title': 'Will it rain?', 'event_title': 'Rain today',
                'outcome_label': 'Yes', 'series_title': 'Weather'}
         self.assertFalse(_matches(rec, ['fed']))
+        self.assertFalse(_matches({**rec, 'id': 'safe', 'title': 'Hunter Feduccia: 1+ home runs?'}, ['fed']))
+        self.assertTrue(_matches({**rec, 'id': 'safe', 'title': 'Will the Fed cut rates?'}, ['fed']))
 
     def test_spread_monitor_quality_gate(self):
         now = __import__('datetime').datetime(2026, 9, 9, tzinfo=__import__('datetime').timezone.utc)
