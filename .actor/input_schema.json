@@ -233,13 +233,13 @@
     "changesOnly": {
       "title": "Changes only (monitor mode)",
       "type": "boolean",
-      "description": "Remember values between runs and output only rows that are new or moved at least 'Min price move' (YES price in markets mode, spread in spread mode). Schedule this actor to get a clean feed of what changed.",
+      "description": "Remember values between runs. Markets mode reports new/moved YES prices. Spread mode reports only positive executable edges with two live legs, when the net edge is new or moves by the threshold.",
       "default": false
     },
     "minPriceMovePts": {
-      "title": "Min price move (points)",
+      "title": "Min monitored move (points)",
       "type": "integer",
-      "description": "In monitor mode: minimum move in probability points (0-100) of the YES price (markets mode) or of the spread (spread mode) to be reported.",
+      "description": "Minimum move in probability points (0-100): YES price in markets mode, executable net edge after fees in spread mode.",
       "default": 2,
       "minimum": 0,
       "maximum": 100

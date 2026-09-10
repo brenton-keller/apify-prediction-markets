@@ -23,7 +23,7 @@ class Kalshi:
     SERIES_FANOUT_MAX = 60
 
     def __init__(self, http: Http | None = None) -> None:
-        self.http = http or Http(BASE, concurrency=5, max_rps=8)
+        self.http = http or Http(BASE, concurrency=4, max_rps=4)
         self._series: dict[str, dict] | None = None
 
     async def series_index(self) -> dict[str, dict]:
@@ -97,7 +97,7 @@ class Kalshi:
                     tasks.append(page({**base, 'tickers': ','.join(market_tickers[i:i + 100])}))
             if event_tickers:
                 tasks.extend(page({**base, 'event_ticker': e}) for e in event_tickers)
-            if series_tickers is not None:
+            if series_tickers is not None and not (market_tickers or event_tickers):
                 tasks.extend(page({**base, 'series_ticker': s}) for s in series_tickers)
             if not (market_tickers or event_tickers or series_tickers is not None):
                 tasks.append(page(base))

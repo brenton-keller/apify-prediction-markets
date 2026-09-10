@@ -1,8 +1,8 @@
 """Cross-venue spread mode: pair the same question on Kalshi and Polymarket and price the gap.
 
 Matching is two-level and deliberately conservative: an event on Kalshi is paired with an event on
-Polymarket only when their titles agree after normalization (aliases, month names, dropped years) and
-their dates do not conflict; markets inside a matched event pair are paired by bracket signature
+Polymarket only when their titles agree after normalization while explicit years, dates, and action
+directions do not conflict; markets inside a matched event pair are paired by bracket signature
 ("80-81", "79 or below", "80 or higher"), by single-market events, or by outcome-label overlap.
 Anything the matcher is not sure about is left unpaired; explicit `pairs` input always wins.
 """
@@ -28,6 +28,7 @@ ALIASES = [
 STOP = {'will', 'the', 'be', 'on', 'in', 'of', 'a', 'an', 'to', 'at', 'by', 'for', 'and', 'or', 'is', 'than', 'what', 'who',
         'does', 'do', 'this', 'that', 'it', 'its', 'with', 'their', 'there', 'between', 'f', 'question', 'market'}
 _YEAR = re.compile(r'^(19|20)\d\d$')
+_YEAR_IN_TEXT = re.compile(r'\b(?:19|20)\d{2}\b')
 _NUM = re.compile(r'-?\d+(?:\.\d+)?')
 _ORD = re.compile(r'\b(\d+)(st|nd|rd|th)\b')
 _DATE_MD = re.compile(r'\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})\b')
@@ -67,6 +68,35 @@ def date_keys(text: str | None) -> frozenset[tuple[int, int]]:
     return frozenset(k for k in keys if 1 <= k[1] <= 31)
 
 
+def year_keys(text: str | None) -> frozenset[int]:
+    """Explicit resolution years are hard semantic constraints, not stop words."""
+    return frozenset(int(y) for y in _YEAR_IN_TEXT.findall(text or ''))
+
+
+def direction_keys(text: str | None) -> frozenset[str]:
+    """Monetary/directional meaning that a numeric bracket alone loses."""
+    t = clean(text)
+    out = set()
+    if re.search(r'\b(hike|hikes|hiked|increase|increases|increased|raise|raises|raised)\b', t):
+        out.add('up')
+    if re.search(r'\b(cut|cuts|decrease|decreases|decreased|reduce|reduces|reduced)\b', t):
+        out.add('down')
+    if re.search(r'\b(no change|unchanged|hold|holds|held)\b', t):
+        out.add('flat')
+    return frozenset(out)
+
+
+def semantic_compatible(a: str | None, b: str | None) -> bool:
+    """Reject contracts with explicit conflicting years or action directions."""
+    ay, by = year_keys(a), year_keys(b)
+    if ay and by and not (ay & by):
+        return False
+    ad, bd = direction_keys(a), direction_keys(b)
+    if ad and bd and not (ad & bd):
+        return False
+    return True
+
+
 def jaccard(a: frozenset, b: frozenset) -> float:
     if not a or not b:
         return 0.0
@@ -84,9 +114,9 @@ def bracket_signature(label: str | None) -> tuple | None:
     is_range = re.search(r'\d\s*(?:-|to)\s*\d', re.sub(r'°\s*f?', '', raw)) is not None
     if len(nums) >= 2 and is_range and not re.search(r'\b(below|above|higher|lower|less|more|under|over)\b', t):
         return ('range', min(nums[:2]), max(nums[:2]))
-    if nums and re.search(r'\b(or below|or less|or lower|or under|below|under|less than|at most|<)', t):
+    if nums and (re.search(r'\b(or below|or less|or lower|or under|below|under|less than|at most)\b', t) or '<' in raw):
         return ('le', nums[0])
-    if nums and re.search(r'\b(or above|or higher|or more|or over|above|over|more than|at least|higher|>)', t):
+    if nums and (re.search(r'\b(or above|or higher|or more|or over|above|over|more than|at least|higher)\b', t) or '>' in raw):
         return ('ge', nums[0])
     if len(nums) == 1 and len(t.split()) <= 4:
         return ('eq', nums[0])
@@ -102,6 +132,13 @@ def match_events(k_events: dict[str, dict], p_events: dict[str, dict], min_score
 
     `*_events` map event id -> {'text': str, 'markets': [rec, ...]}.
     """
+    def semantic_text(e: dict) -> str:
+        parts = [e.get('text') or '']
+        for r in e.get('markets') or []:
+            parts.extend((r.get('event_title') or '', r.get('title') or '', r.get('outcome_label') or ''))
+        return ' '.join(parts)
+
+    p_sem = {pid: semantic_text(e) for pid, e in p_events.items()}
     p_tok = {pid: tokens(e['text']) for pid, e in p_events.items()}
     p_date = {pid: date_keys(e['text']) for pid, e in p_events.items()}
     index: dict[str, set[str]] = defaultdict(set)
@@ -112,6 +149,7 @@ def match_events(k_events: dict[str, dict], p_events: dict[str, dict], min_score
     for kid, e in k_events.items():
         kt = tokens(e['text'])
         kd = date_keys(e['text'])
+        k_sem = semantic_text(e)
         cands: dict[str, int] = defaultdict(int)
         for w in kt:
             for pid in index.get(w, ()):
@@ -121,6 +159,8 @@ def match_events(k_events: dict[str, dict], p_events: dict[str, dict], min_score
             if hits < need:
                 continue
             if kd and p_date[pid] and not (kd & p_date[pid]):
+                continue
+            if not semantic_compatible(k_sem, p_sem[pid]):
                 continue
             s = jaccard(kt, p_tok[pid])
             if s >= min_score:
@@ -140,8 +180,27 @@ def match_events(k_events: dict[str, dict], p_events: dict[str, dict], min_score
 
 def match_markets(k_rows: list[dict], p_rows: list[dict]) -> list[tuple[dict, dict, float]]:
     """Pair markets inside one matched event pair. Signature match first, then 1:1 events, then label overlap."""
+    def contract_text(r: dict) -> str:
+        return ' '.join(str(r.get(x) or '') for x in ('event_title', 'title', 'outcome_label'))
+
+    def labels_compatible(k: dict, p: dict) -> bool:
+        if not semantic_compatible(contract_text(k), contract_text(p)):
+            return False
+        kl, pl = tokens(k.get('outcome_label')), tokens(p.get('outcome_label'))
+        generic = {'yes', 'no'}
+        if kl and pl and not (kl <= generic or pl <= generic):
+            return jaccard(kl, pl) >= 0.5
+        return True
+
     if len(k_rows) == 1 and len(p_rows) == 1:
-        return [(k_rows[0], p_rows[0], 1.0)]
+        kr, pr = k_rows[0], p_rows[0]
+        if not labels_compatible(kr, pr):
+            return []
+        ks, ps = bracket_signature(kr.get('outcome_label') or kr.get('title')), bracket_signature(pr.get('outcome_label') or pr.get('title'))
+        if ks is not None or ps is not None:
+            return [(kr, pr, 1.0)] if ks == ps else []
+        score = jaccard(tokens(contract_text(kr)), tokens(contract_text(pr)))
+        return [(kr, pr, round(score, 3))] if score >= 0.5 else []
     out = []
     used_p: set[int] = set()
     k_sig = [(bracket_signature(r.get('outcome_label') or r.get('title')), r) for r in k_rows]
@@ -152,7 +211,7 @@ def match_markets(k_rows: list[dict], p_rows: list[dict]) -> list[tuple[dict, di
         for j, (ps, pr) in enumerate(p_sig):
             if j in used_p or ps is None:
                 continue
-            if ks[0] == ps[0] and all(math.isclose(a, b, abs_tol=1e-6) for a, b in zip(ks[1:], ps[1:])):
+            if labels_compatible(kr, pr) and ks[0] == ps[0] and all(math.isclose(a, b, abs_tol=1e-6) for a, b in zip(ks[1:], ps[1:])):
                 used_p.add(j)
                 out.append((kr, pr, 1.0))
                 break
@@ -164,6 +223,8 @@ def match_markets(k_rows: list[dict], p_rows: list[dict]) -> list[tuple[dict, di
         kt = tokens(kr.get('outcome_label') or kr.get('title'))
         for j, (ps, pr) in enumerate(p_sig):
             if j in used_p or ps is not None:
+                continue
+            if not labels_compatible(kr, pr):
                 continue
             s = jaccard(kt, tokens(pr.get('outcome_label') or pr.get('title')))
             if s >= 0.5:
@@ -190,7 +251,9 @@ def auto_pairs(k_rows: list[dict], p_rows: list[dict], min_score: float) -> list
     out = []
     for kid, pid, score in match_events(k_events, p_events, min_score):
         for kr, pr, ms in match_markets(k_events[kid]['markets'], p_events[pid]['markets']):
-            out.append((kr, pr, round(min(score, ms) if ms < 1.0 else score, 3)))
+            final = round(min(score, ms), 3)
+            if final >= min_score:  # market-level matching must not weaken the advertised threshold
+                out.append((kr, pr, final))
     return out
 
 

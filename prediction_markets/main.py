@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Any
 
 from apify import Actor
@@ -9,7 +10,7 @@ from apify import Actor
 from .kalshi import Kalshi
 from .monitor import Monitor
 from .polymarket import Polymarket
-from .spread import build_pairs, parse_pairs, tokens
+from .spread import build_pairs, match_events, parse_pairs, tokens
 
 EVENT_BASE = 'market-record'
 EVENT_ENRICHED = 'enriched-market-record'
@@ -26,7 +27,8 @@ SORT_KEYS = {
 def _matches(rec: dict, queries: list[str]) -> bool:
     if not queries:
         return True
-    hay = ' '.join(str(rec.get(k) or '') for k in ('title', 'outcome_label', 'event_title', 'series_title', 'series_id', 'id')).lower()
+    # IDs/tickers are opaque identifiers; matching them made hex condition IDs containing e.g. "fed" false positives.
+    hay = ' '.join(str(rec.get(k) or '') for k in ('title', 'outcome_label', 'event_title', 'series_title')).lower()
     return any(q.lower() in hay for q in queries)
 
 
@@ -38,6 +40,25 @@ def _passes(rec: dict, inp: dict) -> bool:
     if rec['source'] == 'kalshi' and inp['minOpenInterest'] > 0 and (rec.get('open_interest') or 0) < inp['minOpenInterest']:
         return False
     return True
+
+
+def _spread_monitor_eligible(rec: dict, min_match_score: float, now: datetime | None = None) -> bool:
+    """Only alert on positive executable edges whose two contracts are still live."""
+    now = now or datetime.now(timezone.utc)
+
+    def live(ts: str | None) -> bool:
+        if not ts:
+            return False
+        try:
+            return datetime.fromisoformat(ts.replace('Z', '+00:00')) > now
+        except ValueError:
+            return False
+
+    return ((rec.get('match_score') or 0) >= min_match_score
+            and (rec.get('net_edge_pts') or 0) > 0
+            and bool(rec.get('arb_direction'))
+            and live(rec.get('kalshi_close_time'))
+            and live(rec.get('polymarket_close_time')))
 
 
 class Keeper:
@@ -61,7 +82,7 @@ class Keeper:
 
 
 async def collect_kalshi(inp: dict, k: Kalshi) -> list[dict]:
-    if inp.get('_series_override'):
+    if '_series_override' in inp:
         series_filter: list[str] | None = inp['_series_override']
     else:
         series_filter = await k.select_series(inp['kalshiCategories'], inp['searchQueries'], inp['cities'], inp['weatherPreset'])
@@ -136,6 +157,30 @@ async def collect_spreads(inp: dict, k: Kalshi, p: Polymarket) -> list[dict]:
                 if m.get('conditionId'):
                     p_rows.append(p.normalize(m))
     Actor.log.info('Spread: %d Polymarket candidates', len(p_rows))
+    # Match the much smaller event indexes before fetching Kalshi markets. The old path scanned 119k markets and then
+    # hydrated 90k permissive token candidates, exhausting Kalshi's API before producing a dataset.
+    selected_series = await k.select_series(inp['kalshiCategories'], inp['searchQueries'], inp['cities'], inp['weatherPreset'])
+    series_arg = selected_series if selected_series is not None and len(selected_series) <= 200 else None
+    event_titles = await k.event_index(inp['status'], series_arg)
+    if selected_series is not None and series_arg is None:
+        allowed = {s.upper() for s in selected_series}
+        event_titles = {eid: title for eid, title in event_titles.items() if eid.split('-')[0].upper() in allowed}
+    k_events = {eid: {'text': title, 'markets': []} for eid, title in event_titles.items()}
+    p_events: dict[str, dict] = {}
+    for r in p_rows:
+        eid = r.get('event_id') or r['id']
+        p_events.setdefault(eid, {'text': r.get('event_title') or r.get('title') or '', 'markets': []})['markets'].append(r)
+    event_pairs = match_events(k_events, p_events, inp['minMatchScore'] / 100)
+    event_cap = min(500, max(200, inp['maxItems'] * 2))
+    candidate_events = [kid for kid, _, _ in event_pairs[:event_cap]]
+    if len(event_pairs) > event_cap:
+        Actor.log.warning('Spread: capped Kalshi event candidates at %d of %d matches', event_cap, len(event_pairs))
+    inp['kalshiEventTickers'] = list(dict.fromkeys(inp['kalshiEventTickers'] + candidate_events))
+    inp['_event_titles'] = event_titles
+    Actor.log.info('Spread: event index %d rows -> %d candidate Kalshi events', len(event_titles), len(candidate_events))
+    if not inp['kalshiEventTickers'] and not inp['kalshiMarketTickers']:
+        Actor.log.info('Spread: no semantically compatible Kalshi events; returning no pairs without a full market scan')
+        return []
     # Blocking index: a Kalshi row is kept only if its title/series shares two tokens with some Polymarket event title
     # (one token when the Polymarket title is that short). Keeps a full-board Kalshi scan in memory.
     p_tok = [tokens(r.get('event_title') or r.get('title')) for r in p_rows]
@@ -155,6 +200,12 @@ async def collect_spreads(inp: dict, k: Kalshi, p: Polymarket) -> list[dict]:
     k_rows = await collect_kalshi(inp, k)
     # Event titles for the kept Kalshi rows: per-event lookups when few, one paged listing when many.
     events = sorted({r['event_id'] for r in k_rows if r.get('event_id') and not r.get('event_title')})
+    if events:
+        preloaded = inp.get('_event_titles') or {}
+        for r in k_rows:
+            if r.get('event_id') in preloaded:
+                r['event_title'] = preloaded[r['event_id']]
+        events = sorted({r['event_id'] for r in k_rows if r.get('event_id') and not r.get('event_title')})
     if events:
         if len(events) <= 50:
             titles = await k.event_titles(events)
@@ -237,7 +288,8 @@ async def main() -> None:
         k = Kalshi() if want_k else None
         p = Polymarket() if want_p else None
         if spread_mode:
-            monitor = Monitor(inp['monitorStoreName'], field='spread_pts', scale=1, prev_key='previous_spread_pts', move_key='spread_move_pts') if inp['changesOnly'] else None
+            monitor = Monitor(inp['monitorStoreName'], field='net_edge_pts', scale=1,
+                              prev_key='previous_net_edge_pts', move_key='net_edge_move_pts') if inp['changesOnly'] else None
         else:
             monitor = Monitor(inp['monitorStoreName']) if inp['changesOnly'] else None
         if monitor:
@@ -264,6 +316,13 @@ async def main() -> None:
             if failures and not records:
                 raise failures[0]
             records.sort(key=SORT_KEYS[inp['sortBy']])
+        if monitor and spread_mode:
+            # Alert only on semantically strong, executable edges while both contracts are still live.
+            now = datetime.now(timezone.utc)
+            before_quality = len(records)
+            records = [r for r in records if _spread_monitor_eligible(r, inp['minMatchScore'] / 100, now)]
+            Actor.log.info('Spread monitor quality gate: %d of %d rows have positive executable edge and two live legs',
+                           len(records), before_quality)
         if monitor:
             records = [monitor.annotate(r) for r in records]
             before = len(records)

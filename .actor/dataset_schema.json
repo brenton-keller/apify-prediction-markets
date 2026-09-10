@@ -99,7 +99,7 @@
           "kalshi_volume_24h",
           "polymarket_volume_24h",
           "match_score",
-          "spread_move_pts",
+          "net_edge_move_pts",
           "kalshi_url",
           "polymarket_url"
         ]
@@ -151,8 +151,8 @@
             "label": "Match",
             "format": "number"
           },
-          "spread_move_pts": {
-            "label": "Move (pts)",
+          "net_edge_move_pts": {
+            "label": "Net edge move (pts)",
             "format": "number"
           },
           "kalshi_url": {

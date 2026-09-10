@@ -38,7 +38,7 @@ Pairing is deliberately conservative. Events are paired when their titles agree 
 { "mode": "spread", "weatherPreset": true, "cities": ["NYC", "Chicago", "Miami"] }
 ```
 
-**Spread monitor, scheduled every 15 minutes, alert when a gap moves 3+ points or a new pair appears:**
+**Spread monitor, scheduled every 15 minutes, alert when a positive executable net edge moves 3+ points or a new positive edge appears:**
 
 ```json
 { "mode": "spread", "weatherPreset": true, "changesOnly": true, "minPriceMovePts": 3, "monitorStoreName": "weather-spreads" }
@@ -46,7 +46,7 @@ Pairing is deliberately conservative. Events are paired when their titles agree 
 
 Add an Apify integration (Slack, email, webhook) on the actor's Integrations tab and you have an alert feed without any extra code.
 
-Read the rules before trading a gap: the two venues do not always settle on the same source. Miami daily highs, for example, can close at 99% on different brackets because Kalshi and Polymarket read different weather stations. `kalshi_settlement_station`, `kalshi_rules` and `polymarket_rules` are on every row for that check. Rows are sorted by absolute spread, then net edge; `minSpreadPts` drops small gaps; `minMatchScore` (default 60) loosens or tightens auto pairing. Spread rows are billed as spread records (see Pricing).
+Read the rules before trading a gap: the two venues do not always settle on the same source. Miami daily highs, for example, can close at 99% on different brackets because Kalshi and Polymarket read different weather stations. `kalshi_settlement_station`, `kalshi_rules` and `polymarket_rules` are on every row for that check. Rows are sorted by absolute spread, then net edge; `minSpreadPts` drops small gaps; `minMatchScore` (default 60) loosens or tightens auto pairing. Changes-only spread monitoring rejects non-positive edges, below-threshold matches and contracts whose stated close time has passed, and tracks movement in executable net edge rather than midpoint spread. Spread rows are billed as spread records (see Pricing).
 
 ## Who it's for
 
@@ -137,7 +137,7 @@ One row per market. Prices are fractions of a dollar (0 to 1); `implied_probabil
 | `outcomes`, `outcome_prices`, `yes_token_id` | Polymarket outcome list, prices and CLOB token for the YES side |
 | `orderbook` | With `includeOrderbook`: `{ "bids": [{"price", "size"}, ...], "asks": [{"price", "size"}, ...] }` on the YES side, best price first |
 | `recent_trades` | With `includeRecentTrades`: list of `{ "time", "yes_price", "size", "taker_side" }`, newest first |
-| `is_new`, `previous_yes_price`, `previous_seen_at`, `price_move_pts` | Monitor mode only (spread mode: `previous_spread_pts`, `spread_move_pts`) |
+| `is_new`, `previous_yes_price`, `previous_seen_at`, `price_move_pts` | Monitor mode only (spread mode: `previous_net_edge_pts`, `net_edge_move_pts`) |
 | `spread_pts`, `arb_edge_pts`, `arb_direction`, `kalshi_fee_est_pts`, `net_edge_pts`, `match_score`, `match_method`, `kalshi_*`, `polymarket_*` | Spread mode only; see the spread section |
 | `enrichment_error` | Set if an orderbook/trades call failed; the base row is still returned |
 | `raw` | With `includeRaw`: the untouched upstream object |
@@ -165,7 +165,7 @@ Set **Maximum total charge** on the run to cap spend; the actor stops cleanly at
 
 ## Limits and notes
 
-- Kalshi exposes tens of thousands of markets. A keyword search with no category, series or ticker filter scans the whole board (roughly 100+ requests, 20 to 30 seconds). Use `kalshiCategories`, `kalshiSeriesTickers`, or the weather preset to make runs fast.
+- Kalshi exposes tens of thousands of markets. Markets mode may scan the full board for an unscoped keyword. Spread mode first matches the smaller event indexes and fetches only candidate events, avoiding the old 119k-market full-board scan. Use `kalshiCategories`, `kalshiSeriesTickers`, or the weather preset to make runs faster.
 - `settledLookbackDays` is capped at 365. Kalshi settlement history is fetched per series; Polymarket via closed markets.
 - Volume units differ by venue: Kalshi `volume` and `volume_24h` are contracts, Polymarket's are USD. Sorting both venues by volume in one run compares different units; filter by `source` first if that matters.
 - `kalshiCategories` values are the exact strings Kalshi uses (dropdown in the UI): Politics, Elections, Economics, Financials, Companies, Crypto, Commodities, Climate and Weather, Science and Technology, Health, World, Sports, Entertainment, Mentions, Social, Transportation, Exotics.

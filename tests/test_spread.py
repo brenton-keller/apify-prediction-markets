@@ -6,7 +6,9 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from prediction_markets.spread import auto_pairs, bracket_signature, build_pairs, date_keys, match_events, pair_row, parse_pairs, tokens  # noqa: E402
+from prediction_markets.main import _matches, _spread_monitor_eligible  # noqa: E402
+from prediction_markets.spread import (auto_pairs, bracket_signature, build_pairs, date_keys, direction_keys, match_events,
+                                       pair_row, parse_pairs, semantic_compatible, tokens, year_keys)  # noqa: E402
 
 
 def k(id_, event, label, title=None, p=0.5, bid=None, ask=None):
@@ -32,6 +34,7 @@ class Signatures(unittest.TestCase):
         self.assertIsNone(bracket_signature('Trump'))
         self.assertIsNone(bracket_signature('1 (25 bps)'))
         self.assertEqual(bracket_signature('↑ 5.25%'), ('eq', 5.25))
+        self.assertEqual(bracket_signature('Hike >25bps'), ('ge', 25.0))
 
     def test_tokens_and_dates(self):
         a = 'Highest temperature in New York City on Sep 8, 2026?'
@@ -39,6 +42,10 @@ class Signatures(unittest.TestCase):
         self.assertEqual(tokens(a), tokens(b))
         self.assertEqual(date_keys(a), date_keys(b))
         self.assertNotEqual(date_keys(a), date_keys('Highest temperature in NYC on September 9?'))
+        self.assertEqual(year_keys(a), frozenset({2026}))
+        self.assertFalse(semantic_compatible('Fed hike September 2027', 'Fed increase September 2026'))
+        self.assertFalse(semantic_compatible('Hike 25bps', 'Decrease 25 bps'))
+        self.assertEqual(direction_keys('Fed raises rates'), frozenset({'up'}))
 
 
 class Matching(unittest.TestCase):
@@ -66,6 +73,25 @@ class Matching(unittest.TestCase):
         ps = [pm('P1', 'E2|Elon Musk visits Mars in his lifetime?', None, title='Elon Musk visits Mars in his lifetime?')]
         pairs = auto_pairs(ks, ps, 0.6)
         self.assertEqual(len(pairs), 1)
+
+    def test_year_and_direction_false_matches_are_rejected(self):
+        ks = [k('KXFED-27SEP-H25', 'E1|Fed decision in Sep', 'Hike 25bps',
+                title='Will the Federal Reserve hike rates by 25bps at its September 2027 meeting?')]
+        ps = [pm('P1', 'E2|Fed decision in September', '25 bps decrease',
+                 title='Will the Fed decrease interest rates by 25 bps after the September 2026 meeting?')]
+        self.assertEqual(auto_pairs(ks, ps, 0.6), [])
+
+    def test_single_market_scope_mismatch_is_rejected(self):
+        ks = [k('K1', 'E1|What will Trump say during RNC Convention Night 1?', 'Rigged Election',
+                title='What will Donald Trump say during RNC Convention Night 1?')]
+        ps = [pm('P1', 'E2|What will Trump say during RNC Convention Night 1?', 'Crypto / Bitcoin',
+                 title='Will Trump say Crypto or Bitcoin during RNC Convention Night 1?')]
+        self.assertEqual(auto_pairs(ks, ps, 0.6), [])
+
+    def test_market_score_cannot_fall_below_threshold(self):
+        ks = [k('K1', 'E1|Where will it rain on Sep 9, 2026?', 'New York City')]
+        ps = [pm('P1', 'E2|Where will it rain on Sep 9, 2026?', 'New York')]
+        self.assertEqual(auto_pairs(ks, ps, 0.8), [])
 
     def test_explicit_pairs_win_and_missing_reported(self):
         ks = [k('KX-A', 'E1|Anything', 'x')]
@@ -95,6 +121,20 @@ class Economics(unittest.TestCase):
         row = pair_row(k('K', 'E|t', 'x', p=None), pm('P', 'E|t', 'x', p=0.5), 1.0, 'auto')
         self.assertIsNone(row['spread_pts'])
         self.assertIsNone(row['arb_edge_pts'])
+
+    def test_keyword_search_does_not_match_opaque_ids(self):
+        rec = {'id': '0x123fed456', 'series_id': 'KXFED', 'title': 'Will it rain?', 'event_title': 'Rain today',
+               'outcome_label': 'Yes', 'series_title': 'Weather'}
+        self.assertFalse(_matches(rec, ['fed']))
+
+    def test_spread_monitor_quality_gate(self):
+        now = __import__('datetime').datetime(2026, 9, 9, tzinfo=__import__('datetime').timezone.utc)
+        good = {'match_score': 0.9, 'net_edge_pts': 2, 'arb_direction': 'yes_kalshi_no_polymarket',
+                'kalshi_close_time': '2026-09-10T00:00:00Z', 'polymarket_close_time': '2026-09-10T00:00:00Z'}
+        self.assertTrue(_spread_monitor_eligible(good, 0.6, now))
+        self.assertFalse(_spread_monitor_eligible({**good, 'net_edge_pts': -1}, 0.6, now))
+        self.assertFalse(_spread_monitor_eligible({**good, 'match_score': 0.5}, 0.6, now))
+        self.assertFalse(_spread_monitor_eligible({**good, 'polymarket_close_time': '2026-09-08T00:00:00Z'}, 0.6, now))
 
 
 if __name__ == '__main__':

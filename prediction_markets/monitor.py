@@ -1,4 +1,4 @@
-"""Changes-only mode: remember a per-row value (YES price, or spread) in a named key-value store between runs."""
+"""Changes-only mode: remember a per-row value (YES price or executable net edge) between runs."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
