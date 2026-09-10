@@ -46,7 +46,7 @@ Pairing is deliberately conservative. Events are paired when their titles agree 
 
 Add an Apify integration (Slack, email, webhook) on the actor's Integrations tab and you have an alert feed without any extra code.
 
-Read the rules before trading a gap: the two venues do not always settle on the same source. Miami daily highs, for example, can close at 99% on different brackets because Kalshi and Polymarket read different weather stations. `kalshi_settlement_station`, `kalshi_rules` and `polymarket_rules` are on every row for that check. Rows are sorted by absolute spread, then net edge; `minSpreadPts` drops small gaps; `minMatchScore` (default 60) loosens or tightens auto pairing. Changes-only spread monitoring rejects non-positive edges, below-threshold matches and contracts whose stated close time has passed, and tracks movement in executable net edge rather than midpoint spread. Spread rows are billed as spread records (see Pricing).
+Read the rules before trading a gap: the two venues do not always settle on the same source. Miami daily highs, for example, can close at 99% on different brackets because Kalshi and Polymarket read different weather stations. `kalshi_settlement_station`, `kalshi_rules` and `polymarket_rules` are on every row for that check. Rows are sorted by absolute spread, then net edge; `minSpreadPts` drops small gaps; `minMatchScore` (high-precision default 80) loosens or tightens auto pairing. Changes-only spread monitoring rejects non-positive edges, below-threshold matches and contracts whose stated close time has passed, and tracks movement in executable net edge rather than midpoint spread. Spread rows are billed as spread records (see Pricing).
 
 ## Who it's for
 

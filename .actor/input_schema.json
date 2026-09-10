@@ -274,10 +274,10 @@
     "minMatchScore": {
       "title": "Min match score (spread mode)",
       "type": "integer",
-      "default": 60,
+      "default": 80,
       "minimum": 0,
       "maximum": 100,
-      "description": "Title similarity (0-100) required to auto-pair an event across venues. Lower to see more, less certain pairs; every row carries its match_score."
+      "description": "Semantic/title score (0-100) required to auto-pair an event across venues. The high-precision default rejects most ambiguous cross-category pairs; lower it only when you will inspect contract rules manually."
     },
     "spreadPoolSize": {
       "title": "Polymarket candidate pool (spread mode)",

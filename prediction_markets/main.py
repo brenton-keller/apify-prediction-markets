@@ -255,7 +255,7 @@ def read_input(raw: dict[str, Any] | None) -> dict:
         'minVolume24h': 0, 'minLiquidity': 0, 'minOpenInterest': 0, 'settledLookbackDays': 7, 'sortBy': 'volume_24h',
         'maxItems': 500, 'includeOrderbook': False, 'includeRecentTrades': False, 'tradesLimit': 25, 'orderbookDepth': 10,
         'changesOnly': False, 'minPriceMovePts': 2, 'monitorStoreName': 'prediction-markets-monitor', 'includeRaw': False,
-        'mode': 'markets', 'pairs': [], 'minSpreadPts': 0, 'minMatchScore': 60, 'spreadPoolSize': 2000,
+        'mode': 'markets', 'pairs': [], 'minSpreadPts': 0, 'minMatchScore': 80, 'spreadPoolSize': 2000,
     }
     inp = {**defaults, **{k: v for k, v in raw.items() if v is not None}}
     inp['_blank_only'] = []
